@@ -32,7 +32,7 @@ const getPortPwd = async (uid) => {
         if (snapshot.exists()) {
             const { port, password } = snapshot.val();
             console.log({ message: "", port:port, pwd:password });
-            return { message: "", port:port, pwd:pwd };
+            return { message: "", port:port, pwd:password };
         } else {
             return {
                 message: "Since this is your first login, your VM is being initialized, which could take up to 2 minutes. Stay on this window and don't refresh. If your VM details don't show within 3 minutes, contact support at 705-795-6508.",
