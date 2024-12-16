@@ -1,7 +1,7 @@
-import express from 'express';
-import cors from 'cors';
-import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, get } from 'firebase/database';
+const express = require('express');
+const cors = require('cors');
+const { initializeApp } = require('firebase/app');
+const { getDatabase, ref, get } = require('firebase/database');
 
 const PORT = 3004;
 
