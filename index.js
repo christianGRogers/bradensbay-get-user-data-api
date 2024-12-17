@@ -1,10 +1,19 @@
 const express = require('express');
 const cors = require('cors');
+const { exec } = require('child_process');
 const { initializeApp } = require('firebase/app');
-const { getDatabase, ref, get } = require('firebase/database');
+const admin = require('firebase-admin');
+const { getDatabase, ref, set, update } = require('firebase/database');
 
-const PORT = 3004;
+const app = express();
 
+// Enable CORS for all routes and origins
+app.use(cors());
+
+// Middleware to parse JSON bodies
+app.use(express.json());
+
+// Firebase client configuration
 const firebaseConfig = {
     apiKey: "AIzaSyDmdf8NhoFAzXKGuBWYq5XoDrM5eNClgOg",
     authDomain: "bradensbay-1720893101514.firebaseapp.com",
@@ -16,53 +25,78 @@ const firebaseConfig = {
     measurementId: "G-DNJS8CVKWD"
 };
 
-const firebaseApp = initializeApp(firebaseConfig);
-const database = getDatabase(firebaseApp);
+// Initialize Firebase App
+initializeApp(firebaseConfig);
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+// Initialize Firebase Admin SDK (requires admin credentials)
+const serviceAccount = require('./bradensbay-1720893101514-firebase-adminsdk-5czfh-a2b8246636.json'); // Replace with your Firebase Admin SDK JSON key
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: firebaseConfig.databaseURL
+});
 
-const getPortPwd = async (uid) => {
-    const userRef = ref(database, `users/${uid}`);
-    console.log(uid);
+// Function to verify email using Firebase Admin SDK
+async function isEmailVerified(uid) {
     try {
-        const snapshot = await get(userRef);
+        const userRecord = await admin.auth().getUser(uid);
+        return userRecord.emailVerified;
+    } catch (error) {
+        throw new Error(`Error verifying user: ${error.message}`);
+    }
+}
 
-        if (snapshot.exists()) {
-            const { port, password } = snapshot.val();
-            console.log({ message: "", port:port, pwd:password });
-            return { message: "", port:port, pwd:password };
-        } else {
-            return {
-                message: "Since this is your first login, your VM is being initialized, which could take up to 2 minutes. Stay on this window and don't refresh. If your VM details don't show within 3 minutes, contact support at 705-795-6508.",
-                port: "",
-                pwd: ""
-            };
+// Function to execute the script with a timeout
+function executeScript(uid, email) {
+    return new Promise((resolve, reject) => {
+        console.log(`Executing script for UID: ${uid}, Email: ${email}`);
+        exec(`sudo /home/christian/app/bradensbay-start-vm-api/newUserSchedular.sh ${uid} ${email}`, { timeout: 120000 }, (error, stdout, stderr) => {
+            console.log(`stdout: ${stdout}`);
+            console.log(`stderr: ${stderr}`);
+            if (error) {
+                console.error(`Error executing script: ${error.message}`);
+                return reject(new Error(`Error executing script: ${error.message}`));
+            }
+            if (stderr) {
+                console.error(`Script error: ${stderr}`);
+                return reject(new Error(`Script error: ${stderr}`));
+            }
+            const [password, port] = stdout.trim().split(' ');
+            resolve({ password, port });
+        });
+    });
+}
+
+// Define a POST endpoint at '/endpoint'
+app.post('/endpoint', async (req, res) => {
+    const { uid, email } = req.body;
+
+    console.log('Received JSON:', { uid, email });
+
+    try {
+        // Check if the user's email is verified
+        const emailVerified = await isEmailVerified(uid);
+        if (!emailVerified) {
+            return res.status(403).json({ message: 'User email is not verified.' });
         }
+
+        // Execute the script
+        const { password, port } = await executeScript(uid, email);
+
+        // Send a success response
+        res.status(200).json({
+            message: 'Script executed successfully!',
+            password: password,
+            port: port
+        });
+
     } catch (error) {
-        console.error('Error retrieving user credentials:', error.message);
-        throw new Error('Failed to fetch user data.');
-    }
-};
-
-app.post('/execute', async (req, res) => {
-    const { uid } = req.body;
-
-    // Validate request body
-    if (!uid) {
-        return res.status(400).json({ error: 'UID is required.' });
-    }
-
-    try {
-        const result = await getPortPwd(uid);
-        return res.status(200).json(result);
-    } catch (error) {
-        console.error(`Error processing request for UID ${uid}: ${error.message}`);
-        return res.status(500).json({ error: 'An error occurred while processing your request.' });
+        console.error(error.message);
+        res.status(500).json({ message: 'Error processing request', error: error.message });
     }
 });
 
+// Start the server
+const PORT = 3001;
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server is running on port ${PORT}`);
 });
