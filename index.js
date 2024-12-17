@@ -32,7 +32,7 @@ const getPortPwd = async (uid) => {
         if (snapshot.exists()) {
             const { port, password } = snapshot.val();
             console.log({ message: "", port:port, pwd:password });
-            return { message: "", port:port, pwd:pwd };
+        
             return { message: "", port:port, pwd:password };
         } else {
             return {
