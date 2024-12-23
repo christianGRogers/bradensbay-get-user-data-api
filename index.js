@@ -32,36 +32,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Middleware to validate Firebase Auth tokens
-const authenticateUser = async (req, res, next) => {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Unauthorized. Missing or invalid token.' });
-    }
-
-    const idToken = authHeader.split(' ')[1];
-
+// Function to fetch port and password from the database
+const getPortPwd = async (uid, idToken) => {
+    // Verify the Firebase Auth token
     try {
         const decodedToken = await admin.auth().verifyIdToken(idToken);
-        req.user = decodedToken; // Attach the decoded token to the request
-        next();
+        if (decodedToken.uid !== uid) {
+            throw new Error('UID mismatch. Token does not belong to the provided UID.');
+        }
     } catch (error) {
-        console.error('Error verifying ID token:', error.message);
-        return res.status(401).json({ error: 'Unauthorized. Invalid token.' });
+        console.error('Authentication failed:', error.message);
+        throw new Error('Authentication failed.');
     }
-};
 
-// Function to fetch port and password from the database
-const getPortPwd = async (uid) => {
+    // Fetch data from the database
     const userRef = ref(database, `users/${uid}`);
-    console.log(uid);
     try {
         const snapshot = await get(userRef);
 
         if (snapshot.exists()) {
             const { port, password } = snapshot.val();
-            console.log({ message: "", port: port, pwd: password });
             return { message: "", port: port, pwd: password };
         } else {
             return {
@@ -76,17 +66,17 @@ const getPortPwd = async (uid) => {
     }
 };
 
-// Protected API Endpoint
-app.post('/execute', authenticateUser, async (req, res) => {
-    const { uid } = req.body;
+// Public API Endpoint
+app.post('/execute', async (req, res) => {
+    const { uid, idToken } = req.body;
 
     // Validate request body
-    if (!uid) {
-        return res.status(400).json({ error: 'UID is required.' });
+    if (!uid || !idToken) {
+        return res.status(400).json({ error: 'UID and ID token are required.' });
     }
 
     try {
-        const result = await getPortPwd(uid);
+        const result = await getPortPwd(uid, idToken);
         return res.status(200).json(result);
     } catch (error) {
         console.error(`Error processing request for UID ${uid}: ${error.message}`);
